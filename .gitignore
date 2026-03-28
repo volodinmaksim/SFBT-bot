@@ -4,7 +4,6 @@ env/
 ENV/
 
 *.env
-!sfbt.env.example
 
 *.db
 *.sqlite3
