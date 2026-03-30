@@ -12,6 +12,7 @@ from data.story_content import text_after_link, text_hello
 from db.crud import add_event, add_user
 from exception.db import UserNotFound
 from loader import logger
+from utils.common import copy_template_message
 from utils.scheduler import clear_user_story_jobs
 
 router = Router(name='start_router')
@@ -50,11 +51,16 @@ async def cmd_start(message: types.Message, command: CommandObject, state: FSMCo
         logger.error('Не настроены каналы для проверки подписки в sfbt.env')
         return
 
-    await message.answer(
-        text_hello,
-        reply_markup=_build_subscription_keyboard(channels),
-        parse_mode='HTML',
-    )
+    reply_markup = _build_subscription_keyboard(channels)
+    if settings.START_MESSAGE_ID is not None:
+        await copy_template_message(
+            chat_id=message.chat.id,
+            message_id=settings.START_MESSAGE_ID,
+            reply_markup=reply_markup,
+        )
+        return
+
+    await message.answer(text_hello, reply_markup=reply_markup, parse_mode='HTML')
 
 
 @router.callback_query(StoryState.waiting_for_subscription, F.data == 'check_sub')

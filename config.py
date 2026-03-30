@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     CHAT_URL_2: str
     SECRET_TG_KEY: str
     RESOURCE_LINK: str
+    START_MESSAGE_ID: int | None = None
     TEMPLATE_CHAT_ID: int | None = None
     AFTER_LINK_NO_MESSAGE_IDS: str = ''
     AFTER_LINK_YES_INITIAL_MESSAGE_IDS: str = ''
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         'TEST_BOT_TOKEN',
+        'START_MESSAGE_ID',
         'TEMPLATE_CHAT_ID',
         'AFTER_LINK_YES_DELAY_1_MESSAGE_ID',
         'AFTER_LINK_YES_DELAY_2_MESSAGE_ID',
