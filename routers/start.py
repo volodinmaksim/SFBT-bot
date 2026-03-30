@@ -17,6 +17,22 @@ from utils.scheduler import clear_user_story_jobs
 router = Router(name='start_router')
 
 
+def _build_subscription_keyboard(
+    channels: list[tuple[int, str]],
+) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for index, (_, chat_url) in enumerate(channels, start=1):
+        builder.button(text=f'{index}. Подписаться', url=chat_url)
+
+    builder.button(
+        text=f'{len(channels) + 1}. Я подписался',
+        callback_data='check_sub',
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 @router.message(Command('start'))
 async def cmd_start(message: types.Message, command: CommandObject, state: FSMContext):
     utm = (command.args or '').strip()
@@ -29,12 +45,16 @@ async def cmd_start(message: types.Message, command: CommandObject, state: FSMCo
     clear_user_story_jobs(tg_id=message.from_user.id)
     await state.set_state(StoryState.waiting_for_subscription)
 
-    builder = InlineKeyboardBuilder()
-    builder.button(text='1. Подписаться', url=settings.CHAT_URL)
-    builder.button(text='2. Я подписался', callback_data='check_sub')
-    builder.adjust(1)
+    channels = settings.checked_channels
+    if not channels:
+        logger.error('Не настроены каналы для проверки подписки в sfbt.env')
+        return
 
-    await message.answer(text_hello, reply_markup=builder.as_markup(), parse_mode='HTML')
+    await message.answer(
+        text_hello,
+        reply_markup=_build_subscription_keyboard(channels),
+        parse_mode='HTML',
+    )
 
 
 @router.callback_query(StoryState.waiting_for_subscription, F.data == 'check_sub')
@@ -46,35 +66,44 @@ async def verify_subscription(
     with suppress(TelegramBadRequest):
         await callback.answer()
 
-    user_sub = await bot.get_chat_member(
-        chat_id=settings.CHAT_ID_TO_CHECK,
-        user_id=callback.from_user.id,
-    )
+    channels = settings.checked_channels
+    missing_channels: list[tuple[int, str]] = []
 
-    if user_sub.status in ['member', 'administrator', 'creator']:
-        try:
-            await add_event(
-                tg_id=callback.from_user.id,
-                event_name='Получить файл: "Пакет Опора и Ресурс"',
-            )
-        except UserNotFound:
-            logger.error(
-                'Ошибка: пользователь с tg_id %s не найден в базе.',
-                callback.from_user.id,
-            )
+    for chat_id, chat_url in channels:
+        user_sub = await bot.get_chat_member(
+            chat_id=chat_id,
+            user_id=callback.from_user.id,
+        )
+        if user_sub.status not in ['member', 'administrator', 'creator']:
+            missing_channels.append((chat_id, chat_url))
 
-        after_link_builder = InlineKeyboardBuilder()
-        after_link_builder.button(text='Да', callback_data='after_link_yes')
-        after_link_builder.button(text='Нет', callback_data='after_link_no')
-        after_link_builder.adjust(2)
-
-        await state.set_state(StoryState.waiting_for_after_link_response)
-        await callback.message.answer(f'Ваша ссылка: {settings.RESOURCE_LINK}')
+    if missing_channels:
         await callback.message.answer(
-            text_after_link,
-            reply_markup=after_link_builder.as_markup(),
-            parse_mode='HTML',
+            'Вы подписались не на все каналы.',
+            reply_markup=_build_subscription_keyboard(missing_channels),
         )
         return
 
-    await callback.message.answer('Вы еще не подписались на канал.')
+    try:
+        await add_event(
+            tg_id=callback.from_user.id,
+            event_name='Получить файл: "Пакет Опора и Ресурс"',
+        )
+    except UserNotFound:
+        logger.error(
+            'Ошибка: пользователь с tg_id %s не найден в базе.',
+            callback.from_user.id,
+        )
+
+    after_link_builder = InlineKeyboardBuilder()
+    after_link_builder.button(text='Да', callback_data='after_link_yes')
+    after_link_builder.button(text='Нет', callback_data='after_link_no')
+    after_link_builder.adjust(2)
+
+    await state.set_state(StoryState.waiting_for_after_link_response)
+    await callback.message.answer(f'Ваша ссылка: {settings.RESOURCE_LINK}')
+    await callback.message.answer(
+        text_after_link,
+        reply_markup=after_link_builder.as_markup(),
+        parse_mode='HTML',
+    )

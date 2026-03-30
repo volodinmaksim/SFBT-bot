@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     RABBITMQ_URL: str | None = None
     BASE_URL: str
 
-    CHAT_ID_TO_CHECK: int
-    CHAT_URL: str
+    CHAT_ID_TO_CHECK_1: int
+    CHAT_URL_1: str
+    CHAT_ID_TO_CHECK_2: int
+    CHAT_URL_2: str
     SECRET_TG_KEY: str
     RESOURCE_LINK: str
     TEMPLATE_CHAT_ID: int | None = None
@@ -111,6 +113,13 @@ class Settings(BaseSettings):
         if self.TEST_MODE:
             return self.TEST_DAY_DELAY_SECONDS
         return 24 * 60 * 60
+
+    @property
+    def checked_channels(self) -> list[tuple[int, str]]:
+        return [
+            (self.CHAT_ID_TO_CHECK_1, self.CHAT_URL_1),
+            (self.CHAT_ID_TO_CHECK_2, self.CHAT_URL_2),
+        ]
 
 
 @lru_cache

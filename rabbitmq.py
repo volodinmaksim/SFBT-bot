@@ -1,7 +1,9 @@
+import asyncio
 import json
 from collections import deque
 
 import aio_pika
+from aiormq.exceptions import AMQPConnectionError
 from aio_pika import DeliveryMode, ExchangeType, Message
 
 from config import settings
@@ -18,6 +20,8 @@ DEAD_ROUTING_KEY = f"{BOT_NAME}.dead"
 PROCESSING_TTL_SECONDS = 10 * 60
 PROCESSED_TTL_SECONDS = 3 * 24 * 60 * 60
 PROCESSED_UPDATES_LIMIT = 5000
+RABBITMQ_STARTUP_RETRIES = 20
+RABBITMQ_STARTUP_RETRY_DELAY_SECONDS = 3
 
 _rabbit_connection = None
 _rabbit_channel = None
@@ -52,38 +56,64 @@ async def init_rabbitmq(set_qos: bool = False) -> None:
     if _rabbit_connection is not None:
         return
 
-    _rabbit_connection = await aio_pika.connect_robust(_require_rabbitmq_url())
-    _rabbit_channel = await _rabbit_connection.channel()
-    if set_qos:
-        await _rabbit_channel.set_qos(prefetch_count=settings.RABBITMQ_PREFETCH)
+    last_error: Exception | None = None
 
-    _rabbit_exchange = await _rabbit_channel.declare_exchange(
-        EXCHANGE_NAME,
-        ExchangeType.DIRECT,
-        durable=True,
-    )
+    for attempt in range(1, RABBITMQ_STARTUP_RETRIES + 1):
+        try:
+            _rabbit_connection = await aio_pika.connect_robust(_require_rabbitmq_url())
+            _rabbit_channel = await _rabbit_connection.channel()
+            if set_qos:
+                await _rabbit_channel.set_qos(prefetch_count=settings.RABBITMQ_PREFETCH)
 
-    _rabbit_main_queue = await _rabbit_channel.declare_queue(
-        MAIN_QUEUE_NAME,
-        durable=True,
-    )
-    retry_queue = await _rabbit_channel.declare_queue(
-        RETRY_QUEUE_NAME,
-        durable=True,
-        arguments={
-            "x-dead-letter-exchange": EXCHANGE_NAME,
-            "x-dead-letter-routing-key": MAIN_ROUTING_KEY,
-            "x-message-ttl": settings.RABBITMQ_RETRY_DELAY_MS,
-        },
-    )
-    dead_queue = await _rabbit_channel.declare_queue(
-        DEAD_QUEUE_NAME,
-        durable=True,
-    )
+            _rabbit_exchange = await _rabbit_channel.declare_exchange(
+                EXCHANGE_NAME,
+                ExchangeType.DIRECT,
+                durable=True,
+            )
 
-    await _rabbit_main_queue.bind(_rabbit_exchange, routing_key=MAIN_ROUTING_KEY)
-    await retry_queue.bind(_rabbit_exchange, routing_key=RETRY_ROUTING_KEY)
-    await dead_queue.bind(_rabbit_exchange, routing_key=DEAD_ROUTING_KEY)
+            _rabbit_main_queue = await _rabbit_channel.declare_queue(
+                MAIN_QUEUE_NAME,
+                durable=True,
+            )
+            retry_queue = await _rabbit_channel.declare_queue(
+                RETRY_QUEUE_NAME,
+                durable=True,
+                arguments={
+                    "x-dead-letter-exchange": EXCHANGE_NAME,
+                    "x-dead-letter-routing-key": MAIN_ROUTING_KEY,
+                    "x-message-ttl": settings.RABBITMQ_RETRY_DELAY_MS,
+                },
+            )
+            dead_queue = await _rabbit_channel.declare_queue(
+                DEAD_QUEUE_NAME,
+                durable=True,
+            )
+
+            await _rabbit_main_queue.bind(_rabbit_exchange, routing_key=MAIN_ROUTING_KEY)
+            await retry_queue.bind(_rabbit_exchange, routing_key=RETRY_ROUTING_KEY)
+            await dead_queue.bind(_rabbit_exchange, routing_key=DEAD_ROUTING_KEY)
+            return
+        except AMQPConnectionError as exc:
+            last_error = exc
+            _rabbit_connection = None
+            _rabbit_channel = None
+            _rabbit_exchange = None
+            _rabbit_main_queue = None
+
+            logger.warning(
+                "RabbitMQ is unavailable on startup (attempt %s/%s): %s",
+                attempt,
+                RABBITMQ_STARTUP_RETRIES,
+                exc,
+            )
+
+            if attempt == RABBITMQ_STARTUP_RETRIES:
+                break
+
+            await asyncio.sleep(RABBITMQ_STARTUP_RETRY_DELAY_SECONDS)
+
+    if last_error is not None:
+        raise last_error
 
 
 async def close_rabbitmq() -> None:
