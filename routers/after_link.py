@@ -60,7 +60,6 @@ def _ensure_after_link_templates_configured() -> None:
 
 async def _handle_config_error(chat_id: int, exc: RuntimeError) -> None:
     logger.error('%s', exc)
-    await add_event(tg_id=chat_id, event_name=f'after_link_config_error: {exc}')
 
 
 async def _schedule_delay_1(chat_id: int) -> None:
