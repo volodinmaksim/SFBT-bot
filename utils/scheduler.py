@@ -1,4 +1,4 @@
-﻿from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from apscheduler.jobstores.base import JobLookupError

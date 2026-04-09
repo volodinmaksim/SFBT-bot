@@ -6,42 +6,37 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from sqlalchemy import select
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
-from sqlalchemy import select
-
 from config import settings
 from db.db_helper import db_helper
 from db.models import SfbtUser
-from loader import bot, logger, redis, scheduler
+from loader import logger, scheduler
 from utils.common import copy_template_message
-from utils.scheduler import schedule_user_job
 
 BUSINESS_TZ = ZoneInfo("Europe/Moscow")
-TEST_RUN_AT = datetime(2026, 4, 9, 23, 35, 0, tzinfo=BUSINESS_TZ)
-BROADCAST_RUN_AT = datetime(2026, 4, 10, 12, 0, 0, tzinfo=BUSINESS_TZ)
+
 TEST_TG_ID = 846222946
 FIRST_MESSAGE_ID = 36
 SECOND_MESSAGE_ID = 37
 GAP_SECONDS = 30.0
 
-
-async def get_target_ids(target_tg_id: int | None) -> list[int]:
-    if target_tg_id is not None:
-        return [target_tg_id]
-
-    async with db_helper.session() as session:
-        result = await session.execute(
-            select(SfbtUser.tg_id).order_by(SfbtUser.id.asc())
-        )
-        return list(result.scalars())
+TEST_RUN_AT = datetime(2026, 4, 9, 23, 55, 0, tzinfo=BUSINESS_TZ)
+BROADCAST_RUN_AT = datetime(2026, 4, 10, 12, 0, 0, tzinfo=BUSINESS_TZ)
 
 
-async def send_sequence_to_user(tg_id: int) -> None:
-    for message_id in (FIRST_MESSAGE_ID, SECOND_MESSAGE_ID):
+async def send_sequence_to_user(
+    tg_id: int,
+    first_message_id: int = FIRST_MESSAGE_ID,
+    second_message_id: int = SECOND_MESSAGE_ID,
+    gap_seconds: float = GAP_SECONDS,
+) -> None:
+    for message_id in (first_message_id, second_message_id):
         while True:
             try:
                 await copy_template_message(chat_id=tg_id, message_id=message_id)
@@ -58,40 +53,56 @@ async def send_sequence_to_user(tg_id: int) -> None:
                 )
                 return
 
-        if message_id == FIRST_MESSAGE_ID:
-            await asyncio.sleep(GAP_SECONDS)
+        if message_id == first_message_id:
+            await asyncio.sleep(gap_seconds)
 
 
-def build_job_id(prefix: str, tg_id: int, run_at: datetime) -> str:
-    return f"{prefix}:{tg_id}:{run_at.strftime('%Y%m%dT%H%M%S')}"
+async def get_all_user_ids() -> list[int]:
+    async with db_helper.session() as session:
+        result = await session.execute(select(SfbtUser.tg_id).order_by(SfbtUser.id.asc()))
+        return list(result.scalars())
 
 
-def schedule_jobs_for_users(target_ids: list[int], run_at: datetime, prefix: str) -> None:
-    for tg_id in target_ids:
-        schedule_user_job(
-            job_id=build_job_id(prefix, tg_id, run_at),
-            run_date=run_at,
-            func=send_sequence_to_user,
-            args=[tg_id],
-        )
+def schedule_job(*, job_id: str, run_at: datetime, tg_id: int) -> None:
+    scheduler.add_job(
+        "scripts.broadcast_templates:send_sequence_to_user",
+        trigger="date",
+        run_date=run_at.astimezone(scheduler.timezone),
+        args=[tg_id, FIRST_MESSAGE_ID, SECOND_MESSAGE_ID, GAP_SECONDS],
+        id=job_id,
+        replace_existing=True,
+        misfire_grace_time=12 * 60 * 60,
+        coalesce=True,
+        max_instances=1,
+    )
 
 
-async def schedule_broadcasts() -> None:
+async def main() -> None:
     if settings.TEMPLATE_CHAT_ID is None:
         raise SystemExit("TEMPLATE_CHAT_ID is not configured")
 
-    all_target_ids = await get_target_ids(target_tg_id=None)
-    if not all_target_ids:
-        logger.warning("No users found for broadcast")
+    user_ids = await get_all_user_ids()
+    if not user_ids:
+        logger.warning("No users found")
         return
 
     scheduler.start(paused=True)
     try:
-        schedule_jobs_for_users(all_target_ids, BROADCAST_RUN_AT, "broadcast_all")
-        schedule_jobs_for_users([TEST_TG_ID], TEST_RUN_AT, "broadcast_test")
+        for tg_id in user_ids:
+            schedule_job(
+                job_id=f"broadcast_all:{tg_id}:{BROADCAST_RUN_AT.strftime('%Y%m%dT%H%M%S')}",
+                run_at=BROADCAST_RUN_AT,
+                tg_id=tg_id,
+            )
+
+        schedule_job(
+            job_id=f"broadcast_test:{TEST_TG_ID}:{TEST_RUN_AT.strftime('%Y%m%dT%H%M%S')}",
+            run_at=TEST_RUN_AT,
+            tg_id=TEST_TG_ID,
+        )
         logger.info(
-            "Scheduled %s user jobs for %s and test job for tg_id=%s at %s",
-            len(all_target_ids),
+            "Scheduled %s jobs for %s and test for %s at %s",
+            len(user_ids),
             BROADCAST_RUN_AT.isoformat(),
             TEST_TG_ID,
             TEST_RUN_AT.isoformat(),
@@ -101,9 +112,4 @@ async def schedule_broadcasts() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(schedule_broadcasts())
-    finally:
-        asyncio.run(bot.session.close())
-        if redis is not None:
-            asyncio.run(redis.aclose())
+    asyncio.run(main())
