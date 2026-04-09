@@ -26,7 +26,7 @@ FIRST_MESSAGE_ID = 36
 SECOND_MESSAGE_ID = 37
 GAP_SECONDS = 30.0
 
-TEST_RUN_AT = datetime(2026, 4, 10, 0, 35, 0, tzinfo=BUSINESS_TZ)
+TEST_RUN_AT = datetime(2026, 4, 10, 0, 50, 0, tzinfo=BUSINESS_TZ)
 BROADCAST_RUN_AT = datetime(2026, 4, 10, 12, 0, 0, tzinfo=BUSINESS_TZ)
 
 

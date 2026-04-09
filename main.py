@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     await init_rabbitmq()
     await bot.set_webhook(
         url=webhook_url,
+        ip_address="80.93.52.14",
         secret_token=settings.SECRET_TG_KEY,
         drop_pending_updates=False,
     )
