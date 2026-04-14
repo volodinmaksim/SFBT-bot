@@ -35,6 +35,10 @@ def clear_user_story_jobs(*, tg_id: int) -> None:
         'after_link_yes_delay_2',
         'after_link_yes_day_1',
         'after_link_yes_day_2',
+        'after_link_yes_day_3',
+        'after_link_yes_day_4',
+        'after_link_yes_follow_up',
+        'after_link_yes_day_5',
     )
 
     for prefix in job_prefixes:

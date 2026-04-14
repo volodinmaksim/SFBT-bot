@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     AFTER_LINK_YES_DELAY_2_MESSAGE_ID: int | None = None
     AFTER_LINK_YES_DAY_1_MESSAGE_IDS: str = ''
     AFTER_LINK_YES_DAY_2_MESSAGE_IDS: str = ''
+    AFTER_LINK_YES_DAY_3_MESSAGE_ID: int | None = None
+    AFTER_LINK_YES_DAY_4_MESSAGE_ID: int | None = None
+    AFTER_LINK_YES_FOLLOWUP_MESSAGE_ID: int | None = None
+    AFTER_LINK_YES_DAY_5_MESSAGE_ID: int | None = None
 
     HOST: str
     PORT: int
@@ -70,6 +74,10 @@ class Settings(BaseSettings):
         'TEMPLATE_CHAT_ID',
         'AFTER_LINK_YES_DELAY_1_MESSAGE_ID',
         'AFTER_LINK_YES_DELAY_2_MESSAGE_ID',
+        'AFTER_LINK_YES_DAY_3_MESSAGE_ID',
+        'AFTER_LINK_YES_DAY_4_MESSAGE_ID',
+        'AFTER_LINK_YES_FOLLOWUP_MESSAGE_ID',
+        'AFTER_LINK_YES_DAY_5_MESSAGE_ID',
         mode='before',
     )
     @classmethod
@@ -115,6 +123,12 @@ class Settings(BaseSettings):
         if self.TEST_MODE:
             return self.TEST_DAY_DELAY_SECONDS
         return 24 * 60 * 60
+
+    @property
+    def after_link_follow_up_delay_seconds(self) -> int:
+        if self.TEST_MODE:
+            return self.TEST_DELAY_SECONDS
+        return 10 * 60
 
     @property
     def checked_channels(self) -> list[tuple[int, str]]:
