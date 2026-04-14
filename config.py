@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     TEST_MODE: bool = False
     TEST_DELAY_SECONDS: int = 5
     TEST_DAY_DELAY_SECONDS: int = 20
+    PREVIEW_TG_ID: int | None = None
+    PREVIEW_DELAY_SECONDS: int = 5
+    PREVIEW_DAY_DELAY_SECONDS: int = 20
     REDIS_URL: str | None = None
     RABBITMQ_URL: str | None = None
     BASE_URL: str
+    WEBHOOK_IP_ADDRESS: str | None = None
 
     CHAT_ID_TO_CHECK_1: int
     CHAT_URL_1: str
@@ -70,6 +74,8 @@ class Settings(BaseSettings):
 
     @field_validator(
         'TEST_BOT_TOKEN',
+        'PREVIEW_TG_ID',
+        'WEBHOOK_IP_ADDRESS',
         'START_MESSAGE_ID',
         'TEMPLATE_CHAT_ID',
         'AFTER_LINK_YES_DELAY_1_MESSAGE_ID',

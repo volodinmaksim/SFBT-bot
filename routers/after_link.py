@@ -66,9 +66,32 @@ async def _handle_config_error(chat_id: int, exc: RuntimeError) -> None:
     logger.error('%s', exc)
 
 
+def _is_preview_user(chat_id: int) -> bool:
+    return settings.PREVIEW_TG_ID is not None and chat_id == settings.PREVIEW_TG_ID
+
+
+def _get_short_delay_seconds(chat_id: int) -> int:
+    if _is_preview_user(chat_id):
+        return settings.PREVIEW_DELAY_SECONDS
+    return settings.after_link_delay_seconds
+
+
+def _get_follow_up_delay_seconds(chat_id: int) -> int:
+    if _is_preview_user(chat_id):
+        return settings.PREVIEW_DELAY_SECONDS
+    return settings.after_link_follow_up_delay_seconds
+
+
+def _get_day_run_time(chat_id: int) -> datetime:
+    base_time = datetime.now(tz=BUSINESS_TZ)
+    if _is_preview_user(chat_id):
+        return base_time + timedelta(seconds=settings.PREVIEW_DAY_DELAY_SECONDS)
+    return get_after_link_day_run_time(base_time)
+
+
 async def _schedule_delay_1(chat_id: int) -> None:
     run_date = datetime.now(tz=BUSINESS_TZ) + timedelta(
-        seconds=settings.after_link_delay_seconds
+        seconds=_get_short_delay_seconds(chat_id)
     )
     schedule_user_job(
         job_id=f'after_link_yes_delay_1:{chat_id}',
@@ -84,7 +107,7 @@ async def _schedule_delay_1(chat_id: int) -> None:
 
 async def _schedule_delay_2(chat_id: int) -> None:
     run_date = datetime.now(tz=BUSINESS_TZ) + timedelta(
-        seconds=settings.after_link_delay_seconds
+        seconds=_get_short_delay_seconds(chat_id)
     )
     schedule_user_job(
         job_id=f'after_link_yes_delay_2:{chat_id}',
@@ -99,7 +122,7 @@ async def _schedule_delay_2(chat_id: int) -> None:
 
 
 async def _schedule_day_1(chat_id: int) -> None:
-    run_date = get_after_link_day_run_time(datetime.now(tz=BUSINESS_TZ))
+    run_date = _get_day_run_time(chat_id)
     schedule_user_job(
         job_id=f'after_link_yes_day_1:{chat_id}',
         run_date=run_date,
@@ -113,7 +136,7 @@ async def _schedule_day_1(chat_id: int) -> None:
 
 
 async def _schedule_day_2(chat_id: int) -> None:
-    run_date = get_after_link_day_run_time(datetime.now(tz=BUSINESS_TZ))
+    run_date = _get_day_run_time(chat_id)
     schedule_user_job(
         job_id=f'after_link_yes_day_2:{chat_id}',
         run_date=run_date,
@@ -127,7 +150,7 @@ async def _schedule_day_2(chat_id: int) -> None:
 
 
 async def _schedule_day_3(chat_id: int) -> None:
-    run_date = get_after_link_day_run_time(datetime.now(tz=BUSINESS_TZ))
+    run_date = _get_day_run_time(chat_id)
     schedule_user_job(
         job_id=f'after_link_yes_day_3:{chat_id}',
         run_date=run_date,
@@ -141,7 +164,7 @@ async def _schedule_day_3(chat_id: int) -> None:
 
 
 async def _schedule_day_4(chat_id: int) -> None:
-    run_date = get_after_link_day_run_time(datetime.now(tz=BUSINESS_TZ))
+    run_date = _get_day_run_time(chat_id)
     schedule_user_job(
         job_id=f'after_link_yes_day_4:{chat_id}',
         run_date=run_date,
@@ -156,7 +179,7 @@ async def _schedule_day_4(chat_id: int) -> None:
 
 async def _schedule_follow_up(chat_id: int) -> None:
     run_date = datetime.now(tz=BUSINESS_TZ) + timedelta(
-        seconds=settings.after_link_follow_up_delay_seconds
+        seconds=_get_follow_up_delay_seconds(chat_id)
     )
     schedule_user_job(
         job_id=f'after_link_yes_follow_up:{chat_id}',
@@ -171,7 +194,7 @@ async def _schedule_follow_up(chat_id: int) -> None:
 
 
 async def _schedule_day_5(chat_id: int) -> None:
-    run_date = get_after_link_day_run_time(datetime.now(tz=BUSINESS_TZ))
+    run_date = _get_day_run_time(chat_id)
     schedule_user_job(
         job_id=f'after_link_yes_day_5:{chat_id}',
         run_date=run_date,
