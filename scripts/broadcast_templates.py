@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -22,21 +22,31 @@ from utils.common import copy_template_message
 BUSINESS_TZ = ZoneInfo("Europe/Moscow")
 
 TEST_TG_ID = 846222946
-FIRST_MESSAGE_ID = 36
-SECOND_MESSAGE_ID = 37
-GAP_SECONDS = 30.0
+FIRST_MESSAGE_ID = 39
+SECOND_MESSAGE_ID = 41
+THIRD_MESSAGE_ID = 43
+SECOND_MESSAGE_DELAY_SECONDS = 10 * 60
+THIRD_MESSAGE_DELAY_SECONDS = 24 * 60 * 60
 
-TEST_RUN_AT = datetime(2026, 4, 10, 0, 50, 0, tzinfo=BUSINESS_TZ)
-BROADCAST_RUN_AT = datetime(2026, 4, 10, 12, 0, 0, tzinfo=BUSINESS_TZ)
+TEST_RUN_AT = datetime(2026, 4, 14, 20, 15, 0, tzinfo=BUSINESS_TZ)
+BROADCAST_RUN_AT = datetime(2026, 4, 15, 12, 0, 0, tzinfo=BUSINESS_TZ)
 
 
 async def send_sequence_to_user(
     tg_id: int,
     first_message_id: int = FIRST_MESSAGE_ID,
     second_message_id: int = SECOND_MESSAGE_ID,
-    gap_seconds: float = GAP_SECONDS,
+    third_message_id: int = THIRD_MESSAGE_ID,
+    second_message_delay_seconds: float = SECOND_MESSAGE_DELAY_SECONDS,
+    third_message_delay_seconds: float = THIRD_MESSAGE_DELAY_SECONDS,
 ) -> None:
-    for message_id in (first_message_id, second_message_id):
+    messages = (
+        (first_message_id, second_message_delay_seconds),
+        (second_message_id, third_message_delay_seconds),
+        (third_message_id, None),
+    )
+
+    for message_id, delay_seconds in messages:
         while True:
             try:
                 await copy_template_message(chat_id=tg_id, message_id=message_id)
@@ -53,8 +63,8 @@ async def send_sequence_to_user(
                 )
                 return
 
-        if message_id == first_message_id:
-            await asyncio.sleep(gap_seconds)
+        if delay_seconds is not None:
+            await asyncio.sleep(delay_seconds)
 
 
 async def get_all_user_ids() -> list[int]:
@@ -68,7 +78,14 @@ def schedule_job(*, job_id: str, run_at: datetime, tg_id: int) -> None:
         "scripts.broadcast_templates:send_sequence_to_user",
         trigger="date",
         run_date=run_at.astimezone(scheduler.timezone),
-        args=[tg_id, FIRST_MESSAGE_ID, SECOND_MESSAGE_ID, GAP_SECONDS],
+        args=[
+            tg_id,
+            FIRST_MESSAGE_ID,
+            SECOND_MESSAGE_ID,
+            THIRD_MESSAGE_ID,
+            SECOND_MESSAGE_DELAY_SECONDS,
+            THIRD_MESSAGE_DELAY_SECONDS,
+        ],
         id=job_id,
         replace_existing=True,
         misfire_grace_time=12 * 60 * 60,
@@ -101,11 +118,19 @@ async def main() -> None:
             tg_id=TEST_TG_ID,
         )
         logger.info(
-            "Scheduled %s jobs for %s and test for %s at %s",
+            (
+                "Scheduled %s jobs for %s and test for %s at %s. "
+                "Sequence: %s -> %ss -> %s -> %ss -> %s"
+            ),
             len(user_ids),
             BROADCAST_RUN_AT.isoformat(),
             TEST_TG_ID,
             TEST_RUN_AT.isoformat(),
+            FIRST_MESSAGE_ID,
+            SECOND_MESSAGE_DELAY_SECONDS,
+            SECOND_MESSAGE_ID,
+            THIRD_MESSAGE_DELAY_SECONDS,
+            THIRD_MESSAGE_ID,
         )
     finally:
         scheduler.shutdown(wait=False)
